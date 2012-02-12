@@ -1,84 +1,283 @@
 
 /*
-  LiquidCrystal Library - Hello World
- 
- Demonstrates the use a 16x2 LCD display.  The LiquidCrystal
- library works with all LCD displays that are compatible with the 
- Hitachi HD44780 driver. There are many of them out there, and you
- can usually tell them by the 16-pin interface.
- 
- This sketch prints "Hello World!" to the LCD
- and shows the time.
+ This sketch takes input from multiple DS18B20 1-Wire temperature sensors
+ and displays the values on a 16x2 character LCD.
  
   The circuit:
- * LCD RS pin to digital pin 12
- * LCD Enable pin to digital pin 11
- * LCD D4 pin to digital pin 5
- * LCD D5 pin to digital pin 4
- * LCD D6 pin to digital pin 3
- * LCD D7 pin to digital pin 2
+  (as in http://www.arduino.cc/en/Tutorial/LiquidCrystal )
+ * LCD RS pin to digital pin A4
+ * LCD Enable pin to digital pin A5
+ * LCD D4 pin to digital pin 7
+ * LCD D5 pin to digital pin 6
+ * LCD D6 pin to digital pin 5
+ * LCD D7 pin to digital pin 4
  * LCD R/W pin to ground
- * 10K resistor:
+ * 10K pot:
  * ends to +5V and ground
  * wiper to LCD VO pin (pin 3)
  
- Library originally added 18 Apr 2008
- by David A. Mellis
- library modified 5 Jul 2009
- by Limor Fried (http://www.ladyada.net)
- example added 9 Jul 2009
- by Tom Igoe
- modified 22 Nov 2010
- by Tom Igoe
+ *1-Wire bus Data to pin 10, 4.7k pull-up to +5V
+*/
  
- This example code is in the public domain.
-
- http://www.arduino.cc/en/Tutorial/LiquidCrystal
- */
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <LiquidCrystal.h>
+#include <stdlib.h> // Necessary for the dtostrf() function
+#include "etherShield.h"
 
-// Data wire is plugged into port 2 on the Arduino
-#define ONE_WIRE_BUS 10
+// Ethernet stuff
+      static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x24}; 
+      static uint8_t myip[4] = {192,168,1,200}; // NOTE!: MAC and IP must be unique on your network!
+      static char baseurl[]="http://192.168.1.200/"; // If you change the port below, also add :portnum to the end of this URL.
+      static uint16_t mywwwport =80; // listen port for tcp/www (max range 1-254)
+      
+      #define BUFFER_SIZE 500
+      static uint8_t buf[BUFFER_SIZE+1];
+      #define STR_BUFFER_SIZE 22
+      static char strbuf[STR_BUFFER_SIZE+1];
+      
+      EtherShield es=EtherShield();
+      
+      // prepare the webpage by writing the data to the tcp send buffer
+      uint16_t print_webpage(uint8_t *buf);
+      int8_t analyse_cmd(char *str);
 
-// Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
-OneWire oneWire(ONE_WIRE_BUS);
-LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+// 1-Wire stuff:
+      // Setup a oneWire instance to communicate with any OneWire devices (not just Maxim/Dallas temperature ICs)
+      OneWire oneWire(A0); // Bus is connected on pin Analog0
+      LiquidCrystal lcd(A4, A5, 7, 6, 5, 4);
+      
+      // Pass our oneWire reference to Dallas Temperature. 
+      DallasTemperature sensors(&oneWire);
+      
+      float temps[3];
+      
+unsigned int oldTime = 0;
 
-// Pass our oneWire reference to Dallas Temperature. 
-DallasTemperature sensors(&oneWire);
+void queryTemps(){
+  // call sensors.requestTemperatures() to issue a global temperature 
+  // request to all devices on the bus
+  sensors.requestTemperatures();
+  
+  Serial.print("Temperature for the device 1 (F): ");
+  for(int i=0; i<2; i++){
+    temps[i] = sensors.getTempFByIndex(i);
+  }
+  Serial.println(temps[0]);
+  Serial.print("Temperature for the device 2 (F): ");
+  Serial.println(temps[1]);
+  Serial.print("\n");
+}
+
+void displayTemps(){
+  lcd.setCursor(0, 1);
+  lcd.print(temps[0]);
+  lcd.setCursor(8, 1);
+  lcd.print(temps[1]);
+}
+
+// The returned value is stored in the global var strbuf
+uint8_t find_key_val(char *str,char *key)
+{
+        uint8_t found=0;
+        uint8_t i=0;
+        char *kp;
+        kp=key;
+        while(*str &&  *str!=' ' && found==0){
+                if (*str == *kp){
+                        kp++;
+                        if (*kp == '\0'){
+                                str++;
+                                kp=key;
+                                if (*str == '='){
+                                        found=1;
+                                }
+                        }
+                }else{
+                        kp=key;
+                }
+                str++;
+        }
+        if (found==1){
+                // copy the value to a buffer and terminate it with '\0'
+                while(*str &&  *str!=' ' && *str!='&' && i<STR_BUFFER_SIZE){
+                        strbuf[i]=*str;
+                        i++;
+                        str++;
+                }
+                strbuf[i]='\0';
+        }
+        return(found);
+}
+
+int8_t analyse_cmd(char *str)
+{
+        int8_t r=-1;
+     
+        if (find_key_val(str,"cmd")){
+                if (*strbuf < 0x3a && *strbuf > 0x2f){
+                        // is a ASCII number, return it
+                        r=(*strbuf-0x30);
+                }
+        }
+        return r;
+}
+
+
+uint16_t print_webpage(uint8_t *buf)
+{
+        uint16_t plen;
+     	plen=es.ES_fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n"));
+        //plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("<script type=\"text/javascript\"> var _gaq = _gaq || []; _gaq.push([\'_setAccount\', \'UA-6497364-1\']); _gaq.push([\'_trackPageview\']); (function() {var ga = document.createElement(\'script\'); ga.type = \'text/javascript\'; ga.async = true; ga.src = (\'https:\' == document.location.protocol ? \'https://ssl\' : \'http://www\') + \'.google-analytics.com/ga.js\'; var s = document.getElementsByTagName(\'script\')[0]; s.parentNode.insertBefore(ga, s); })(); </script>"));
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("<center><p><h1>Welcome to The Beacon Street Kegerator  </h1></p> "));
+       	plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("<font color=\"red\">"));
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("Keg temperature: "));
+        
+        char tempString[6];
+        dtostrf(temps[0],4,2,tempString);
+        
+        int i=0;
+        while (tempString[i]) {
+                buf[TCP_CHECKSUM_L_P+3+plen]=tempString[i++];
+                plen++;
+        }
+        
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR(" F <br />") );
+
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("Ambient fridge temperature: "));
+        
+        memset(&tempString[0], 0, sizeof(tempString));
+        
+        dtostrf(temps[1],4,2,tempString);
+        
+        i=0;
+        while (tempString[i]) {
+                buf[TCP_CHECKSUM_L_P+3+plen]=tempString[i++];
+                plen++;
+        }
+        
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR(" F <br />") );
+        
+        plen=es.ES_fill_tcp_data_p(buf,plen,PSTR("</font></center><a href=\"http://www.alexwhittemore.com\">www.alexwhittemore.com<a>"));
+  
+        return(plen);
+ }
 
 void setup(void)
 {
   // start serial port
   Serial.begin(9600);
-  Serial.println("Dallas Temperature IC Control Library Demo");
 
   // Start up the library
   sensors.begin();
+  
+  /*initialize enc28j60*/
+  es.ES_enc28j60Init(mymac);
+  es.ES_enc28j60clkout(2); // change clkout from 6.25MHz to 12.5MHz
+  delay(10);
+  
+  /* Magjack leds configuration, see enc28j60 datasheet, page 11 */
+  // LEDA=greed LEDB=yellow
+  //
+  // 0x880 is PHLCON LEDB=on, LEDA=on
+  // enc28j60PhyWrite(PHLCON,0b0000 1000 1000 00 00);
+  es.ES_enc28j60PhyWrite(PHLCON,0x880);
+  delay(500);
+  //
+  // 0x990 is PHLCON LEDB=off, LEDA=off
+  // enc28j60PhyWrite(PHLCON,0b0000 1001 1001 00 00);
+  es.ES_enc28j60PhyWrite(PHLCON,0x990);
+  delay(500);
+  //
+  // 0x880 is PHLCON LEDB=on, LEDA=on
+  // enc28j60PhyWrite(PHLCON,0b0000 1000 1000 00 00);
+  es.ES_enc28j60PhyWrite(PHLCON,0x880);
+  delay(500);
+  //
+  // 0x990 is PHLCON LEDB=off, LEDA=off
+  // enc28j60PhyWrite(PHLCON,0b0000 1001 1001 00 00);
+  es.ES_enc28j60PhyWrite(PHLCON,0x990);
+  delay(500);
+  //
+  // 0x476 is PHLCON LEDA=links status, LEDB=receive/transmit
+  // enc28j60PhyWrite(PHLCON,0b0000 0100 0111 01 10);
+  es.ES_enc28j60PhyWrite(PHLCON,0x476);
+  delay(100);
+        
+  //init the ethernet/ip layer:
+  es.ES_init_ip_arp_udp_tcp(mymac,myip,80);
+  
   lcd.begin(16, 2);
   lcd.print("Keg:    Ambient:");
+  queryTemps();
+  displayTemps();
 }
 
 void loop(void)
 { 
-  // call sensors.requestTemperatures() to issue a global temperature 
-  // request to all devices on the bus
-  //Serial.print("Requesting temperatures...");
-  sensors.requestTemperatures(); // Send the command to get temperatures
-  //Serial.println("DONE");
+  if((millis()-oldTime)>2000){
+    oldTime=millis();
+    queryTemps();
+    displayTemps();
+  }
   
-  Serial.print("Temperature for the device 1 (F): ");
-  Serial.println(sensors.getTempFByIndex(0));
-  Serial.print("Temperature for the device 2 (F): ");
-  Serial.println(sensors.getTempFByIndex(1));
-  Serial.print("\n");
   
-  lcd.setCursor(0, 1);
-  lcd.print(sensors.getTempFByIndex(0));
-  lcd.setCursor(8, 1);
-  lcd.print(sensors.getTempFByIndex(1));
-  
-  delay(1000);
+  uint16_t plen, dat_p;
+  int8_t cmd;
+
+  plen = es.ES_enc28j60PacketReceive(BUFFER_SIZE, buf);
+
+	/*plen will ne unequal to zero if there is a valid packet (without crc error) */
+  if(plen!=0){
+	           
+    // arp is broadcast if unknown but a host may also verify the mac address by sending it to a unicast address.
+    if(es.ES_eth_type_is_arp_and_my_ip(buf,plen)){
+      es.ES_make_arp_answer_from_request(buf);
+      return;
+    }
+
+    // check if ip packets are for us:
+    if(es.ES_eth_type_is_ip_and_my_ip(buf,plen)==0){
+      return;
+    }
+    
+    if(buf[IP_PROTO_P]==IP_PROTO_ICMP_V && buf[ICMP_TYPE_P]==ICMP_TYPE_ECHOREQUEST_V){
+      es.ES_make_echo_reply_from_request(buf,plen);
+      return;
+    }
+    
+    // tcp port www start, compare only the lower byte
+    if (buf[IP_PROTO_P]==IP_PROTO_TCP_V&&buf[TCP_DST_PORT_H_P]==0&&buf[TCP_DST_PORT_L_P]==mywwwport){
+      if (buf[TCP_FLAGS_P] & TCP_FLAGS_SYN_V){
+         es.ES_make_tcp_synack_from_syn(buf); // make_tcp_synack_from_syn does already send the syn,ack
+         return;     
+      }
+      if (buf[TCP_FLAGS_P] & TCP_FLAGS_ACK_V){
+        es.ES_init_len_info(buf); // init some data structures
+        dat_p=es.ES_get_tcp_data_pointer();
+        if (dat_p==0){ // we can possibly have no data, just ack:
+          if (buf[TCP_FLAGS_P] & TCP_FLAGS_FIN_V){
+            es.ES_make_tcp_ack_from_any(buf);
+          }
+          return;
+        }
+        if (strncmp("GET ",(char *)&(buf[dat_p]),4)!=0){
+          	// head, post and other methods for possible status codes see:
+            // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
+            plen=es.ES_fill_tcp_data_p(buf,0,PSTR("HTTP/1.0 200 OK\r\nContent-Type: text/html\r\n\r\n<h1>200 OK</h1>"));
+            goto SENDTCP;
+        }
+ 	if (strncmp("/ ",(char *)&(buf[dat_p+4]),2)==0){
+                plen=print_webpage(buf);
+            goto SENDTCP;
+         }
+        cmd=analyse_cmd((char *)&(buf[dat_p+5]));
+        if (cmd==1){
+             plen=print_webpage(buf);
+        }
+SENDTCP:  es.ES_make_tcp_ack_from_any(buf); // send ack for http get
+           es.ES_make_tcp_ack_with_data(buf,plen); // send data       
+      }
+    }
+  }
 }
