@@ -17,6 +17,7 @@ Ethernet:
 Displaying temperatures locally is cool (and useful), but what happens when you turn the temperature down a little, only to come home from work and find frozen beer in your lines? No good! At least while I got everything diald in just right, I decided ethernet connectivity was necessary to check my temps from my phone on the go.
 
 I used an ethernet shield I happend to have lying around, a Seeedstudio Ethernet Shield v1.1 - one of the pre-wiznet shields that only has a MAC/PHY chip (the ENC28J60). This means a few things for the code.
+
 *First, the normal ethernet library won't do. I used the library explained and downloadable from this page: http://www.nuelectronics.com/estore/index.php?main_page=project_eth. Worth noting is that the library found there no longer works with Arduino 1.0: I have updated a few files to make it compatible here: https://github.com/alexwhittemore/EtherShield28j60.
 *Second, since there's not a proper TCP/IP stack, all the data you want to convey must fit within one packet. It's not the worst constraint in the world for light duty data-to-web applications like this, but it's something to consider.
 
