@@ -14,6 +14,8 @@ Keg:    Ambient:
 
 Ethernet:
 ---------
+Check out the current kegerator temps at keg.beerchallenged.com!
+
 Displaying temperatures locally is cool (and useful), but what happens when you turn the temperature down a little, only to come home from work and find frozen beer in your lines? No good! At least while I got everything diald in just right, I decided ethernet connectivity was necessary to check my temps from my phone on the go.
 
 I used an ethernet shield I happend to have lying around, a Seeedstudio Ethernet Shield v1.1 - one of the pre-wiznet shields that only has a MAC/PHY chip (the ENC28J60). This means a few things for the code.
