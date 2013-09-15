@@ -27,8 +27,8 @@
 
 // Ethernet stuff
       static uint8_t mymac[6] = {0x54,0x55,0x58,0x10,0x00,0x24}; 
-      static uint8_t myip[4] = {192,168,1,200}; // NOTE!: MAC and IP must be unique on your network!
-      static char baseurl[]="http://192.168.1.200/"; // If you change the port below, also add :portnum to the end of this URL.
+      static uint8_t myip[4] = {192,168,1,24}; // NOTE!: MAC and IP must be unique on your network!
+      static char baseurl[]="http://192.168.1.24/"; // If you change the port below, also add :portnum to the end of this URL.
       static uint16_t mywwwport =80; // listen port for tcp/www (max range 1-254)
       
       #define BUFFER_SIZE 500
@@ -214,7 +214,8 @@ void setup(void)
 }
 
 void loop(void)
-{ 
+{
+  serial.println("Entered loop");
   if((millis()-oldTime)>2000){
     oldTime=millis();
     queryTemps();
