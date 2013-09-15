@@ -40,10 +40,12 @@ There are a bunch of things this doesn't do which would be nice
 
 Going Forward:
 --------------
-It's been a LONG time since I did this project the first time. I'm only even revisiting it now because I just kegged some homebrew for the first time in a while and I need to watch the temperatures. Given the limitations of the current system, and given that this sketch is already within ~5 bytes of the maximum program size for an ATMega168, I suspect I'll abandon arduino going forward.
+It's been a LONG time since I did this project the first time. I'm only even revisiting it now because I just kegged some homebrew for the first time in a while and I need to watch the temperatures. 
 
 It seems the most obvious thing to do is to replace the ethernet component with something a bit better. The ENC28J60 is super cheap and lovely for it, but doing much at all with the web interface is VERY hard as a result. It's really only useful for implementing some kind of basic get-the-data-out interface. Using an Arduino-official ethernet shield is an obvious solution, but I've also got a Netduino Plus lying around, and that kills two birds with one stone.
 
 The screen is also a bit meh, small touch LCDs are cheap these days, and I have one from Seeed. That'd neatly take care of display and local control.
 
 Of course, from a cost perspective it's hard to beat a raspberry pi, and a $10 wifi dongle would be a nice bonus, so I'll probably just get lazy and do that.
+
+Given the limitations of the current system, and given that this sketch is already within ~5 bytes of the maximum program size for an ATMega168, I suspect I'll abandon arduino going forward.
